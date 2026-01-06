@@ -53,6 +53,7 @@
         let isLoading = true;
         let selectedDay = 'all';
         let selectedPeriod = 'all';
+        let selectedAdvisor = 'all';
         let minStudents = 1;
 
         const timeSlots = {
@@ -64,12 +65,15 @@
         const periodNames = { morning: 'Manhã', afternoon: 'Tarde', night: 'Noite' };
 
         async function saveStudent(student) {
-            const data = { name: student.name, course: student.course, schedule: student.schedule, updatedAt: new Date().toISOString() };
+            const data = { 
+                name: student.name || '', 
+                course: student.course || '', 
+                advisor: student.advisor || '',
+                schedule: student.schedule || {}, 
+                updatedAt: new Date().toISOString() 
+            };
             if (student.firestoreId) {
                 await updateDoc(doc(db, 'students', student.firestoreId), data);
-            } else {
-                const docRef = await addDoc(collection(db, 'students'), { ...data, createdAt: new Date().toISOString() });
-                student.firestoreId = docRef.id;
             }
         }
 
@@ -79,10 +83,15 @@
 
         function calculateFreeSlots() {
             let free = [];
+            // Filtra os alunos pelo orientador antes de calcular os horários livres
+            const filteredStudents = selectedAdvisor === 'all' 
+                ? students 
+                : students.filter(s => s.advisor === selectedAdvisor);
+
             days.forEach(day => {
                 Object.keys(timeSlots).forEach(period => {
                     timeSlots[period].forEach(slot => {
-                        let available = students.filter(s => !isSlotOccupied(s, day, period, slot));
+                        let available = filteredStudents.filter(s => !isSlotOccupied(s, day, period, slot));
                         if (available.length >= minStudents) {
                             free.push({ day, period, slot, count: available.length, students: available });
                         }
@@ -95,9 +104,12 @@
         function render() {
             const container = document.getElementById('mainContent');
             const counter = document.getElementById('studentCount');
-            counter.textContent = `${students.length} alunos cadastrados`;
+            if (counter) counter.textContent = `${students.length} alunos cadastrados`;
 
             if (isLoading) return;
+
+            // Pega lista única de orientadores para o filtro
+            const advisors = [...new Set(students.map(s => s.advisor).filter(a => a))].sort();
 
             let html = `<div class="space-y-6">
                 <div class="bg-white rounded-lg shadow-lg p-6">
@@ -113,11 +125,12 @@
             students.forEach(s => {
                 const isEditing = editingStudentId === s.id;
                 html += `
-                    <div class="border-2 border-gray-100 rounded-xl p-4 hover:shadow-md transition-all">
+                    <div class="border-2 ${isEditing ? 'border-indigo-400 ring-2 ring-indigo-100' : 'border-gray-100'} rounded-xl p-4 hover:shadow-md transition-all">
                         <div class="flex justify-between items-start mb-2">
                             <div class="flex-1">
-                                <input type="text" value="${s.name}" onchange="window.updateStudent('${s.id}', 'name', this.value)" placeholder="Nome" class="w-full font-bold text-gray-800 border-b border-transparent focus:border-indigo-300 outline-none mb-1">
-                                <input type="text" value="${s.course}" onchange="window.updateStudent('${s.id}', 'course', this.value)" placeholder="Curso" class="w-full text-sm text-gray-500 border-b border-transparent focus:border-indigo-300 outline-none">
+                                <input type="text" value="${s.name}" onchange="window.updateStudent('${s.id}', 'name', this.value)" placeholder="Nome do Aluno" class="w-full font-bold text-gray-800 border-b border-transparent focus:border-indigo-300 outline-none mb-1">
+                                <input type="text" value="${s.course}" onchange="window.updateStudent('${s.id}', 'course', this.value)" placeholder="Curso" class="w-full text-sm text-gray-500 border-b border-transparent focus:border-indigo-300 outline-none mb-1">
+                                <input type="text" value="${s.advisor || ''}" onchange="window.updateStudent('${s.id}', 'advisor', this.value)" placeholder="Orientador" class="w-full text-xs text-indigo-600 font-medium border-b border-transparent focus:border-indigo-300 outline-none">
                             </div>
                             <button onclick="window.removeStudent('${s.id}')" class="text-red-400 hover:text-red-600 ml-2">🗑</button>
                         </div>
@@ -131,82 +144,32 @@
 
             if (editingStudentId) {
                 const s = students.find(x => x.id === editingStudentId);
-                html += `<div class="bg-white rounded-lg shadow-lg p-6">
-                    <h2 class="text-xl font-bold mb-4">Editando: ${s.name || 'Novo Aluno'}</h2>
-                    <div class="grid grid-cols-5 gap-4 overflow-x-auto pb-4" style="min-width: 800px;">`;
-                days.forEach(day => {
-                    html += `<div class="space-y-4"><h3 class="font-bold text-center bg-gray-50 py-2 rounded">${day}</h3>`;
-                    Object.keys(timeSlots).forEach(p => {
-                        html += `<div><p class="text-xs font-bold text-gray-400 mb-2 uppercase">${periodNames[p]}</p><div class="space-y-1">`;
-                        timeSlots[p].forEach(slot => {
-                            const occ = isSlotOccupied(s, day, p, slot);
-                            html += `<button onclick="window.toggleSlot('${s.id}','${day}','${p}','${slot}')" class="w-full py-1 text-xs rounded font-medium ${occ ? 'bg-red-500 text-white' : 'bg-green-100 text-green-800'}">${slot}</button>`;
+                if (s) {
+                    html += `<div class="bg-white rounded-lg shadow-lg p-6">
+                        <h2 class="text-xl font-bold mb-4">Editando Horários: ${s.name || 'Novo Aluno'}</h2>
+                        <div class="grid grid-cols-5 gap-4 overflow-x-auto pb-4" style="min-width: 800px;">`;
+                    days.forEach(day => {
+                        html += `<div class="space-y-4"><h3 class="font-bold text-center bg-gray-50 py-2 rounded">${day}</h3>`;
+                        Object.keys(timeSlots).forEach(p => {
+                            html += `<div><p class="text-xs font-bold text-gray-400 mb-2 uppercase">${periodNames[p]}</p><div class="space-y-1">`;
+                            timeSlots[p].forEach(slot => {
+                                const occ = isSlotOccupied(s, day, p, slot);
+                                html += `<button onclick="window.toggleSlot('${s.id}','${day}','${p}','${slot}')" class="w-full py-1 text-xs rounded font-medium ${occ ? 'bg-red-500 text-white' : 'bg-green-100 text-green-800'}">${slot}</button>`;
+                            });
+                            html += `</div></div>`;
                         });
-                        html += `</div></div>`;
+                        html += `</div>`;
                     });
-                    html += `</div>`;
-                });
-                html += `</div></div>`;
+                    html += `</div></div>`;
+                }
             }
 
             const free = calculateFreeSlots().filter(f => (selectedDay === 'all' || f.day === selectedDay) && (selectedPeriod === 'all' || f.period === selectedPeriod));
+            
             html += `<div class="bg-white rounded-lg shadow-lg p-6">
                 <h2 class="text-xl font-bold mb-6 text-gray-800">Melhores Horários Livres</h2>
                 <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
                     <div><label class="text-xs font-bold text-gray-500 block mb-2">Dia</label>
                         <select onchange="window.changeDay(this.value)" class="w-full border p-2 rounded-lg">${['all', ...days].map(d => `<option value="${d}" ${selectedDay === d ? 'selected' : ''}>${d === 'all' ? 'Todos os dias' : d}</option>`).join('')}</select>
                     </div>
-                    <div><label class="text-xs font-bold text-gray-500 block mb-2">Período</label>
-                        <select onchange="window.changePeriod(this.value)" class="w-full border p-2 rounded-lg"><option value="all">Todos</option>${Object.entries(periodNames).map(([k, v]) => `<option value="${k}" ${selectedPeriod === k ? 'selected' : ''}>${v}</option>`).join('')}</select>
-                    </div>
-                    <div class="md:col-span-2"><label class="text-xs font-bold text-gray-500 block mb-2">Mínimo de alunos: ${minStudents}</label>
-                        <input type="range" min="1" max="${Math.max(students.length, 1)}" value="${minStudents}" oninput="window.changeMinStudents(this.value)" class="w-full">
-                    </div>
-                </div>
-                <div class="space-y-4">`;
-
-            free.forEach(f => {
-                html += `<div class="border rounded-xl p-4 hover:border-indigo-200 transition-all">
-                    <div class="flex justify-between items-center mb-3">
-                        <div class="flex items-center gap-2 font-bold text-gray-700">🕒 ${f.day} • ${periodNames[f.period]} • ${f.slot}</div>
-                        <div class="bg-indigo-600 text-white px-3 py-1 rounded-full text-sm font-bold">${f.count} Alunos</div>
-                    </div>
-                    <div class="flex flex-wrap gap-2">${f.students.map(s => `<span class="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-medium">${s.name || 'Sem nome'}</span>`).join('')}</div>
-                </div>`;
-            });
-
-            html += `</div></div></div>`;
-            container.innerHTML = html;
-        }
-
-        window.addStudent = async () => {
-            const s = { id: 'ID'+Date.now(), name: '', course: '', schedule: {} };
-            students.push(s); editingStudentId = s.id; render(); await saveStudent(s);
-        };
-        window.updateStudent = async (id, f, v) => {
-            const s = students.find(x => x.id === id); if (s) { s[f] = v; await saveStudent(s); }
-        };
-        window.toggleEditing = id => { editingStudentId = editingStudentId === id ? null : id; render(); };
-        window.toggleSlot = async (id, d, p, sl) => {
-            const s = students.find(x => x.id === id); if (!s.schedule[d]) s.schedule[d] = {}; if (!s.schedule[d][p]) s.schedule[d][p] = [];
-            const idx = s.schedule[d][p].indexOf(sl); if (idx > -1) s.schedule[d][p].splice(idx, 1); else s.schedule[d][p].push(sl);
-            render(); await saveStudent(s);
-        };
-        window.removeStudent = async id => {
-            if (confirm('Remover?')) {
-                const s = students.find(x => x.id === id);
-                if (s.firestoreId) await deleteDoc(doc(db, 'students', s.firestoreId));
-                students = students.filter(x => x.id !== id); render();
-            }
-        };
-        window.changeDay = v => { selectedDay = v; render(); };
-        window.changePeriod = v => { selectedPeriod = v; render(); };
-        window.changeMinStudents = v => { minStudents = parseInt(v); render(); };
-
-        onSnapshot(collection(db, 'students'), (snap) => {
-            students = snap.docs.map(d => ({ ...d.data(), firestoreId: d.id, id: d.id }));
-            isLoading = false; render();
-        });
-    </script>
-</body>
-</html>
+                    <div><label class="text-xs font-
