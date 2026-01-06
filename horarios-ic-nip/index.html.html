@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Horários Livres-IC's do NIP</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        
+        .slot-btn {
+            transition: all 0.2s;
+        }
+        .slot-btn:hover {
+            transform: scale(1.05);
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen">
+    <div class="container mx-auto p-4 md:p-6 max-w-7xl">
+        <header class="bg-white rounded-lg shadow-lg p-4 md:p-6 mb-6">
+            <div class="flex flex-col md:flex-row items-center justify-between gap-4">
+                <div class="flex items-center gap-3">
+                    <svg class="w-8 h-8 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                    </svg>
+                    <h1 class="text-2xl md:text-3xl font-bold text-gray-800">Horários Livres-ICs do NIP</h1>
+                </div>
+                <div class="flex items-center gap-2 text-sm text-gray-600">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                    </svg>
+                    <span id="studentCount">Carregando...</span>
+                </div>
+            </div>
+        </header>
+
+        <div id="mainContent">
+            <div class="bg-white rounded-lg shadow-lg p-8 text-center">
+                <p class="text-gray-600">Carregando sistema...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        var students = [];
+        var editingStudentId = null;
+
+        // --- FUNÇÕES DE PERSISTÊNCIA ---
+
+        function saveData() {
+            // Salva o array 'students' no localStorage
+            localStorage.setItem('scheduler_students', JSON.stringify(students));
+        }
+
+        function loadData() {
+            // Carrega os dados salvos do localStorage
+            var savedData = localStorage.getItem('scheduler_students');
+            if (savedData) {
+                try {
+                    students = JSON.parse(savedData);
+                } catch (e) {
+                    console.error("Erro ao carregar dados do localStorage:", e);
+                    students = []; // Limpa dados se houver erro
+                }
+            }
+        }
+
+        // -------------------------------------
+
+        var timeSlots = {
+            morning: ['08:00-08:50', '08:50-09:40', '10:00-10:50', '10:50-11:40', '11:40-12:30', '12:30-13:20'],
+            afternoon: ['13:30-14:20', '14:20-15:10', '15:10-16:00', '16:00-16:50', '17:10-18:00', '18:00-18:50'],
+            night: ['19:00-19:50', '19:50-20:40', '20:40-21:30', '21:30-22:20', '22:20-23:10']
+        };
+
+        var days = ['Segunda', 'Terca', 'Quarta', 'Quinta', 'Sexta'];
+        var periods = ['morning', 'afternoon', 'night'];
+        var periodNames = {
+            morning: 'Manhã',
+            afternoon: 'Tarde',
+            night: 'Noite'
+        };
+
+        var selectedDay = 'all';
+        var selectedPeriod = 'all';
+        var minStudents = 1;
+
+        function findStudent(id) {
+            for (var i = 0; i < students.length; i++) {
+                if (students[i].id === id) {
+                    return students[i];
+                }
+            }
+            return null;
+        }
+
+        function addStudent() {
+            var newStudent = {
+                id: 'STUDENT_' + Date.now(),
+                name: '',
+                course: '',
+                schedule: {}
+            };
+            students.push(newStudent);
+            editingStudentId = newStudent.id;
+            saveData(); // Salva após adicionar
+            render();
+        }
+
+        function removeStudent(id) {
+            if (confirm('Tem certeza que deseja remover este aluno?')) {
+                var newStudents = [];
+                for (var i = 0; i < students.length; i++) {
+                    if (students[i].id !== id) {
+                        newStudents.push(students[i]);
+                    }
+                }
+                students = newStudents;
+                if (editingStudentId === id) {
+                    editingStudentId = null;
+                }
+                saveData(); // Salva após remover
+                render();
+            }
+        }
+
+        function updateStudent(id, field, value) {
+            var student = findStudent(id);
+            if (student) {
+                student[field] = value;
+                saveData(); // Salva após atualização de nome/curso
+            }
+        }
+
+        function toggleSlot(studentId, day, period, slot) {
+            var student = findStudent(studentId);
+            if (!student) return;
+
+            if (!student.schedule[day]) student.schedule[day] = {};
+            if (!student.schedule[day][period]) student.schedule[day][period] = [];
+
+            var index = student.schedule[day][period].indexOf(slot);
+            if (index > -1) {
+                student.schedule[day][period].splice(index, 1);
+            } else {
+                student.schedule[day][period].push(slot);
+            }
+
+            saveData(); // Salva após alteração de horário
+            render();
+        }
+
+        function isSlotOccupied(student, day, period, slot) {
+            if (!student.schedule[day]) return false;
+            if (!student.schedule[day][period]) return false;
+            return student.schedule[day][period].indexOf(slot) > -1;
+        }
+
+        function calculateFreeSlots() {
+            var slots = [];
+
+            for (var d = 0; d < days.length; d++) {
+                var day = days[d];
+                for (var p = 0; p < periods.length; p++) {
+                    var period = periods[p];
+                    var periodSlots = timeSlots[period];
+                    
+                    for (var s = 0; s < periodSlots.length; s++) {
+                        var slot = periodSlots[s];
+                        var freeStudents = [];
+                        
+                        for (var i = 0; i < students.length; i++) {
+                            if (!isSlotOccupied(students[i], day, period, slot)) {
+                                freeStudents.push(students[i]);
+                            }
+                        }
+
+                        if (freeStudents.length >= minStudents) {
+                            var studentsList = [];
+                            for (var j = 0; j < freeStudents.length; j++) {
+                                studentsList.push({
+                                    name: freeStudents[j].name,
+                                    id: freeStudents[j].id
+                                });
+                            }
+                            
+                            slots.push({
+                                day: day,
+                                period: period,
+                                slot: slot,
+                                count: freeStudents.length,
+                                students: studentsList
+                            });
+                        }
+                    }
+                }
+            }
+
+            slots.sort(function(a, b) { return b.count - a.count; });
+            return slots;
+        }
+
+        // =======================================================
+        // FUNÇÃO DE EXPORTAÇÃO ALTERADA PARA GERAR CSV (EXCEL)
+        // =======================================================
+        function exportData() {
+            var allSlots = calculateFreeSlots();
+            var filteredSlots = [];
+            
+            for (var i = 0; i < allSlots.length; i++) {
+                var slot = allSlots[i];
+                if (selectedDay !== 'all' && slot.day !== selectedDay) continue;
+                if (selectedPeriod !== 'all' && slot.period !== selectedPeriod) continue;
+                filteredSlots.push(slot);
+            }
+
+            // Título das colunas do CSV
+            var csvContent = "Dia;Horário;Período;Qtd Alunos Livres;Nomes dos Alunos\n";
+
+            // Preenche as linhas do CSV
+            for (var i = 0; i < filteredSlots.length; i++) {
+                var slot = filteredSlots[i];
+                var studentNames = slot.students.map(function(s) {
+                    return (s.name || 'Sem nome');
+                }).join(', '); // Nomes separados por vírgula dentro da célula
+
+                csvContent += 
+                    '"' + slot.day + '";' + // Dia
+                    '"' + slot.slot + '";' + // Horário
+                    '"' + periodNames[slot.period] + '";' + // Período
+                    '"' + slot.count + '";' + // Qtd
+                    '"' + studentNames + '"\n'; // Nomes dos alunos
+            }
+
+            // Cria o arquivo CSV. O prefixo '\uFEFF' é o BOM (Byte Order Mark) para garantir 
+            // que o Excel interprete corretamente a codificação UTF-8 e os caracteres especiais.
+            var blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+            var url = URL.createObjectURL(blob);
+            
+            // Faz o download
+            var a = document.createElement('a');
+            a.href = url;
+            // Define a extensão .csv
+            a.download = 'horarios-livres-' + new Date().toISOString().split('T')[0] + '.csv'; 
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+        // =======================================================
+        // FIM DA FUNÇÃO DE EXPORTAÇÃO ALTERADA
+        // =======================================================
+
+        function clearAllData() {
+            if (confirm('Tem certeza que deseja limpar TODOS os dados? Esta ação não pode ser desfeita!')) {
+                students = [];
+                editingStudentId = null;
+                localStorage.removeItem('scheduler_students'); // Limpa os dados persistentes
+                render();
+            }
+        }
+
+        function updateCounter() {
+            var counter = document.getElementById('studentCount');
+            if (counter) {
+                var text = students.length + ' aluno';
+                if (students.length !== 1) text += 's';
+                text += ' cadastrado';
+                if (students.length !== 1) text += 's';
+                counter.textContent = text;
+            }
+        }
+
+        function render() {
+            updateCounter();
+
+            var mainContent = document.getElementById('mainContent');
+            if (!mainContent) return;
+
+            if (students.length === 0) {
+                mainContent.innerHTML = '<div class="bg-white rounded-lg shadow-lg p-8 md:p-12 text-center">' +
+                    '<svg class="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+                    '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>' +
+                    '</svg>' +
+                    '<h2 class="text-2xl font-bold text-gray-800 mb-2">Nenhum aluno cadastrado</h2>' +
+                    '<p class="text-gray-600 mb-6">Adicione alunos para começar a analisar os horários livres</p>' +
+                    '<button onclick="addStudent()" class="inline-flex items-center gap-2 bg-indigo-600 text-white px-6 py-3 rounded-lg hover:bg-indigo-700 transition-colors text-lg font-medium">' +
+                    '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+                    '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>' +
+                    '</svg>' +
+                    'Adicionar Primeiro Aluno' +
+                    '</button>' +
+                    '</div>';
+                return;
+            }
+
+            var freeSlots = calculateFreeSlots();
+            var filteredSlots = [];
+            for (var i = 0; i < freeSlots.length; i++) {
+                var slot = freeSlots[i];
+                if (selectedDay !== 'all' && slot.day !== selectedDay) continue;
+                if (selectedPeriod !== 'all' && slot.period !== selectedPeriod) continue;
+                filteredSlots.push(slot);
+            }
+
+            var html = '<div class="space-y-6">';
+            
+            html += '<div class="bg-white rounded-lg shadow-lg p-4 md:p-6">' +
+                '<div class="flex flex-col md:flex-row items-start md:items-center justify-between mb-4 gap-4">' +
+                '<h2 class="text-xl font-bold text-gray-800">Alunos Cadastrados</h2>' +
+                '<div class="flex gap-2 w-full md:w-auto">' +
+                '<button onclick="addStudent()" class="flex-1 md:flex-none inline-flex items-center justify-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium">' +
+                '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+                '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>' +
+                '</svg>' +
+                'Adicionar' +
+                '</button>' +
+                '<button onclick="clearAllData()" class="flex-1 md:flex-none inline-flex items-center justify-center gap-2 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors text-sm font-medium">' +
+                '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+                '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>' +
+                '</svg>' +
+                'Limpar Tudo' +
+                '</button>' +
+                '</div>' +
+                '</div>' +
+                '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">';
+
+            for (var i = 0; i < students.length; i++) {
+                var student = students[i];
+                var isEditing = editingStudentId === student.id;
+                html += '<div class="border-2 border-gray-200 rounded-lg p-4 hover:border-indigo-400 transition-colors">' +
+                    '<div class="flex items-start justify-between mb-3">' +
+                    '<div class="flex-1 mr-2">' +
+                    '<input type="text" value="' + (student.name || '') + '" onchange="updateStudent(\'' + student.id + '\', \'name\', this.value)" placeholder="Nome do aluno" class="w-full text-lg font-semibold border-b-2 border-gray-300 focus:border-indigo-600 outline-none mb-2 pb-1"/>' +
+                    '<input type="text" value="' + (student.course || '') + '" onchange="updateStudent(\'' + student.id + '\', \'course\', this.value)" placeholder="Curso" class="w-full text-sm text-gray-600 border-b border-gray-200 focus:border-indigo-600 outline-none pb-1"/>' +
+                    '</div>' +
+                    '<button onclick="removeStudent(\'' + student.id + '\')" class="text-red-500 hover:text-red-700">' +
+                    '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+                    '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>' +
+                    '</svg>' +
+                    '</button>' +
+                    '</div>' +
+                    '<button onclick="editingStudentId = editingStudentId === \'' + student.id + '\' ? null : \'' + student.id + '\'; render();" class="w-full flex items-center justify-center gap-2 ' + (isEditing ? 'bg-green-100 text-green-700' : 'bg-indigo-100 text-indigo-700') + ' px-3 py-2 rounded hover:opacity-80 transition-opacity text-sm font-medium">' +
+                    (isEditing ? 
+                        '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Concluir' : 
+                        '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg> Editar Horários'
+                    ) +
+                    '</button>' +
+                    '</div>';
+            }
+
+            html += '</div></div>';
+
+            if (editingStudentId) {
+                var editStudent = findStudent(editingStudentId);
+                if (editStudent) {
+                    html += '<div class="bg-white rounded-lg shadow-lg p-4 md:p-6">' +
+                        '<div class="flex items-center justify-between mb-4">' +
+                        '<h2 class="text-xl font-bold text-gray-800">Editar Horários: ' + (editStudent.name || 'Novo Aluno') + '</h2>' +
+                        '<button onclick="editingStudentId = null; render();" class="text-gray-500 hover:text-gray-700">' +
+                        '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+                        '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>' +
+                        '</svg>' +
+                        '</button>' +
+                        '<p class="text-sm text-gray-600 mb-4">Clique nos horários para marcar quando o aluno <strong>TEM AULA</strong> (vermelho = ocupado, verde = livre)</p>' +
+                        '<div class="overflow-x-auto">' +
+                        '<div class="grid grid-cols-5 gap-3" style="min-width: 900px;">';
+
+                    for (var d = 0; d < days.length; d++) {
+                        var day = days[d];
+                        html += '<div class="border-2 border-gray-300 rounded-lg p-3">' +
+                            '<h3 class="text-center font-bold text-gray-800 mb-3 text-sm">' + day + '</h3>';
+
+                        for (var p = 0; p < periods.length; p++) {
+                            var period = periods[p];
+                            html += '<div class="mb-3">' +
+                                '<p class="text-xs font-semibold text-gray-700 mb-2 bg-gray-100 px-2 py-1 rounded">' + periodNames[period] + '</p>' +
+                                '<div class="space-y-1">';
+
+                            var slots = timeSlots[period];
+                            for (var s = 0; s < slots.length; s++) {
+                                var slot = slots[s];
+                                var occupied = isSlotOccupied(editStudent, day, period, slot);
+                                html += '<button onclick="toggleSlot(\'' + editingStudentId + '\', \'' + day + '\', \'' + period + '\', \'' + slot + '\')" class="slot-btn w-full text-xs px-2 py-2 rounded font-medium ' + (occupied ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-green-100 text-green-800 hover:bg-green-200') + '">' + slot + '</button>';
+                            }
+
+                            html += '</div></div>';
+                        }
+
+                        html += '</div>';
+                    }
+
+                    html += '</div></div></div>';
+                }
+            }
+
+            html += '<div class="bg-white rounded-lg shadow-lg p-4 md:p-6">' +
+                '<h2 class="text-xl font-bold text-gray-800 mb-4">Melhores Horários Livres</h2>' +
+                '<div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">' +
+                '<div>' +
+                '<label class="block text-sm font-medium text-gray-700 mb-2">Dia da Semana</label>' +
+                '<select onchange="selectedDay = this.value; render();" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-600">' +
+                '<option value="all" ' + (selectedDay === 'all' ? 'selected' : '') + '>Todos os dias</option>';
+
+            for (var d = 0; d < days.length; d++) {
+                html += '<option value="' + days[d] + '" ' + (selectedDay === days[d] ? 'selected' : '') + '>' + days[d] + '</option>';
+            }
+
+            html += '</select></div>' +
+                '<div>' +
+                '<label class="block text-sm font-medium text-gray-700 mb-2">Período</label>' +
+                '<select onchange="selectedPeriod = this.value; render();" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-600">' +
+                '<option value="all" ' + (selectedPeriod === 'all' ? 'selected' : '') + '>Todos os períodos</option>' +
+                '<option value="morning" ' + (selectedPeriod === 'morning' ? 'selected' : '') + '>Manhã</option>' +
+                '<option value="afternoon" ' + (selectedPeriod === 'afternoon' ? 'selected' : '') + '>Tarde</option>' +
+                '<option value="night" ' + (selectedPeriod === 'night' ? 'selected' : '') + '>Noite</option>' +
+                '</select></div>' +
+                '<div>' +
+                '<label class="block text-sm font-medium text-gray-700 mb-2">Mínimo de alunos: ' + minStudents + '</label>' +
+                '<input type="range" min="1" max="' + students.length + '" value="' + minStudents + '" oninput="minStudents = parseInt(this.value); render();" class="w-full"/>' +
+                '</div>' +
+                '<div class="flex items-end">' +
+                '<button onclick="exportData()" ' + (filteredSlots.length === 0 ? 'disabled' : '') + ' class="w-full flex items-center justify-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed text-sm font-medium">' +
+                '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+                '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>' +
+                '</svg>' +
+                'Exportar para Excel (CSV)' + // Texto do botão alterado
+                '</button>' +
+                '</div>' +
+                '</div>' +
+                '<div class="space-y-3 max-h-96 overflow-y-auto">';
+
+            if (filteredSlots.length === 0) {
+                html += '<div class="text-center text-gray-500 py-8 bg-gray-50 rounded-lg">' +
+                    '<svg class="w-12 h-12 text-gray-400 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+                    '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>' +
+                    '</svg>' +
+                    '<p>Nenhum horário encontrado com os critérios selecionados</p>' +
+                    '</div>';
+            } else {
+                for (var i = 0; i < filteredSlots.length; i++) {
+                    var slot = filteredSlots[i];
+                    html += '<div class="border-2 border-gray-200 rounded-lg p-4 hover:shadow-md hover:border-indigo-300 transition-all">' +
+                        '<div class="flex flex-col md:flex-row items-start md:items-center justify-between mb-3 gap-2">' +
+                        '<div class="flex items-center gap-3 flex-wrap">' +
+                        '<svg class="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+                        '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>' +
+                        '</svg>' +
+                        '<span class="font-bold text-gray-800 text-lg">' + slot.day + '</span>' +
+                        '<span class="text-gray-600">•</span>' +
+                        '<span class="text-gray-700 font-medium">' + periodNames[slot.period] + '</span>' +
+                        '<span class="text-gray-600">•</span>' +
+                        '<span class="text-sm text-gray-600">' + slot.slot + '</span>' +
+                        '</div>' +
+                        '<div class="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-full">' +
+                        '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+                        '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>' +
+                        '</svg>' +
+                        '<span class="font-bold text-lg">' + slot.count + '</span>' +
+                        '</div>' +
+                        '</div>' +
+                        '<div class="text-sm">' +
+                        '<strong class="text-gray-700">Alunos disponíveis:</strong>' +
+                        '<div class="mt-2 flex flex-wrap gap-2">';
+
+                    for (var j = 0; j < slot.students.length; j++) {
+                        html += '<span class="bg-green-100 text-green-800 px-3 py-1 rounded-full font-medium text-xs md:text-sm">' + (slot.students[j].name || 'Sem nome') + '</span>';
+                    }
+
+                    html += '</div></div></div>';
+                }
+            }
+
+            html += '</div></div></div>';
+
+            mainContent.innerHTML = html;
+        }
+
+        window.addEventListener('DOMContentLoaded', function() {
+            loadData(); // Carrega os dados salvos antes de renderizar
+            render();
+        });
+    </script>
+</body>
+</html>
