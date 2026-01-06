@@ -172,4 +172,98 @@
                     <div><label class="text-xs font-bold text-gray-500 block mb-2">Dia</label>
                         <select onchange="window.changeDay(this.value)" class="w-full border p-2 rounded-lg">${['all', ...days].map(d => `<option value="${d}" ${selectedDay === d ? 'selected' : ''}>${d === 'all' ? 'Todos os dias' : d}</option>`).join('')}</select>
                     </div>
-                    <div><label class="text-xs font-
+                    <div><label class="text-xs font-bold text-gray-500 block mb-2">Período</label>
+                        <select onchange="window.changePeriod(this.value)" class="w-full border p-2 rounded-lg"><option value="all">Todos</option>${Object.entries(periodNames).map(([k, v]) => `<option value="${k}" ${selectedPeriod === k ? 'selected' : ''}>${v}</option>`).join('')}</select>
+                    </div>
+                    <div><label class="text-xs font-bold text-gray-500 block mb-2">Orientador</label>
+                        <select onchange="window.changeAdvisor(this.value)" class="w-full border p-2 rounded-lg">
+                            <option value="all">Todos os Orientadores</option>
+                            ${advisors.map(a => `<option value="${a}" ${selectedAdvisor === a ? 'selected' : ''}>${a}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div><label class="text-xs font-bold text-gray-500 block mb-2">Mínimo de alunos: ${minStudents}</label>
+                        <input type="range" min="1" max="${Math.max(students.length, 1)}" value="${minStudents}" oninput="window.changeMinStudents(this.value)" class="w-full">
+                    </div>
+                </div>
+                <div class="space-y-4">`;
+
+            if (free.length === 0) {
+                html += `<p class="text-center py-10 text-gray-400 italic">Nenhum horário livre encontrado com estes critérios.</p>`;
+            } else {
+                free.forEach(f => {
+                    html += `<div class="border rounded-xl p-4 hover:border-indigo-200 transition-all">
+                        <div class="flex justify-between items-center mb-3">
+                            <div class="flex items-center gap-2 font-bold text-gray-700">🕒 ${f.day} • ${periodNames[f.period]} • ${f.slot}</div>
+                            <div class="bg-indigo-600 text-white px-3 py-1 rounded-full text-sm font-bold">${f.count} Alunos</div>
+                        </div>
+                        <div class="flex flex-wrap gap-2">${f.students.map(s => `<span class="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-medium">${s.name || 'Sem nome'}</span>`).join('')}</div>
+                    </div>`;
+                });
+            }
+
+            html += `</div></div></div>`;
+            container.innerHTML = html;
+        }
+
+        window.addStudent = async () => {
+            isLoading = true; // Trava a renderização rápida para evitar o bug visual
+            const docRef = await addDoc(collection(db, 'students'), { 
+                name: '', 
+                course: '', 
+                advisor: '',
+                schedule: {}, 
+                createdAt: new Date().toISOString() 
+            });
+            editingStudentId = docRef.id; // Já entra no modo edição do novo ID
+            isLoading = false;
+            // O onSnapshot cuidará de atualizar a lista 'students' e chamar o render()
+        };
+        
+        window.updateStudent = async (id, f, v) => {
+            const s = students.find(x => x.id === id); 
+            if (s) { 
+                s[f] = v; 
+                await saveStudent(s); 
+            }
+        };
+        
+        window.toggleEditing = id => { editingStudentId = editingStudentId === id ? null : id; render(); };
+        
+        window.toggleSlot = async (id, d, p, sl) => {
+            const s = students.find(x => x.id === id); 
+            if (!s) return;
+            if (!s.schedule[d]) s.schedule[d] = {}; 
+            if (!s.schedule[d][p]) s.schedule[d][p] = [];
+            const idx = s.schedule[d][p].indexOf(sl); 
+            if (idx > -1) s.schedule[d][p].splice(idx, 1); 
+            else s.schedule[d][p].push(sl);
+            render(); 
+            await saveStudent(s);
+        };
+        
+        window.removeStudent = async id => {
+            if (confirm('Deseja realmente remover este aluno?')) {
+                await deleteDoc(doc(db, 'students', id));
+            }
+        };
+        
+        window.changeDay = v => { selectedDay = v; render(); };
+        window.changePeriod = v => { selectedPeriod = v; render(); };
+        window.changeAdvisor = v => { selectedAdvisor = v; render(); };
+        window.changeMinStudents = v => { minStudents = parseInt(v) || 1; render(); };
+
+        window.clearAllData = async () => {
+            if (confirm('⚠️ ATENÇÃO: Deseja apagar TODOS os alunos?')) {
+                const snap = await getDocs(collection(db, 'students'));
+                for (const d of snap.docs) { await deleteDoc(doc(db, 'students', d.id)); }
+            }
+        };
+
+        onSnapshot(collection(db, 'students'), (snap) => {
+            students = snap.docs.map(d => ({ ...d.data(), firestoreId: d.id, id: d.id }));
+            isLoading = false; 
+            render();
+        });
+    </script>
+</body>
+</html>
