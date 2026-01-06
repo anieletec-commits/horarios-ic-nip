@@ -535,7 +535,37 @@
             if (filteredSlots.length === 0) {
                 html += '<div class="text-center text-gray-500 py-8 bg-gray-50 rounded-lg">' +
                     '<svg class="w-12 h-12
-for (var j = 0; j < slot.students.length; j++) {
+                    text-gray-400 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+'<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>' +
+'</svg>' +
+'<p>Nenhum horário encontrado com os critérios selecionados</p>' +
+'</div>';
+} else {
+for (var i = 0; i < filteredSlots.length; i++) {
+var slot = filteredSlots[i];
+html += '<div class="border-2 border-gray-200 rounded-lg p-4 hover:shadow-md hover:border-indigo-300 transition-all">' +
+'<div class="flex flex-col md:flex-row items-start md:items-center justify-between mb-3 gap-2">' +
+'<div class="flex items-center gap-3 flex-wrap">' +
+'<svg class="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+'<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>' +
+'</svg>' +
+'<span class="font-bold text-gray-800 text-lg">' + slot.day + '</span>' +
+'<span class="text-gray-600">•</span>' +
+'<span class="text-gray-700 font-medium">' + periodNames[slot.period] + '</span>' +
+'<span class="text-gray-600">•</span>' +
+'<span class="text-sm text-gray-600">' + slot.slot + '</span>' +
+'</div>' +
+'<div class="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-full">' +
+'<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+'<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>' +
+'</svg>' +
+'<span class="font-bold text-lg">' + slot.count + '</span>' +
+'</div>' +
+'</div>' +
+'<div class="text-sm">' +
+'<strong class="text-gray-700">Alunos disponíveis:</strong>' +
+'<div class="mt-2 flex flex-wrap gap-2">';
+    for (var j = 0; j < slot.students.length; j++) {
                     html += '<span class="bg-green-100 text-green-800 px-3 py-1 rounded-full font-medium text-xs md:text-sm">' +
                         (slot.students[j].name || 'Sem nome') +
                         '</span>';
